@@ -1,4 +1,6 @@
 const userModel = require('../models/userSchema');
+const topicModel = require('../models/topicSchema');
+const commentModel = require('../models/commentSchema');
 const bcrypt = require('bcrypt');
 
 module.exports = {
@@ -47,5 +49,54 @@ module.exports = {
   logout: (req, res) => {
     req.session.destroy(null);
     res.send({ success: true });
+  },
+  createTopic: async (req, res) => {
+    const { user } = req.session;
+    const {
+      title,
+      shortDescription,
+      description,
+      commentsCount,
+      viewsCount,
+      createdAt,
+      currentUser,
+    } = req.body;
+
+    if (user) {
+      const topic = new topicModel();
+      topic.title = title;
+      topic.shortDescription = shortDescription;
+      topic.description = description;
+      topic.commentsCount = commentsCount;
+      topic.viewsCount = viewsCount;
+      topic.createdAt = new Date();
+      topic.user = currentUser;
+
+      await topic.save();
+      res.send({ success: true, message: 'Topic succesfull created', topic });
+    } else {
+      res.send({ success: false });
+    }
+  },
+  topics: async (req, res) => {
+    let topics = await topicModel.find({}).sort({ createdAt: 'desc' }).populate('user');
+    res.send({ success: true, topics });
+  },
+  createComment: async (req, res) => {
+    const { user } = req.session;
+    const { comment, createdAt, currentUser, currentTopic } = req.body;
+
+    if (user) {
+      const commentNew = new topicModel();
+      commentNew.comment = comment;
+      commentNew.createdAt = new Date();
+      commentNew.user = currentUser;
+      commentNew.topic = currentTopic;
+
+      await commentNew.save();
+      res.send({ success: true, message: 'Comment succesfull send', commentNew });
+    } else {
+      res.send({ success: false });
+    }
   },
 };
