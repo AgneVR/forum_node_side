@@ -1,6 +1,7 @@
 const userModel = require('../models/userSchema');
 const topicModel = require('../models/topicSchema');
 const commentModel = require('../models/commentSchema');
+const userNotificationModel = require('../models/userNotificationSchema');
 const bcrypt = require('bcrypt');
 
 module.exports = {
@@ -31,8 +32,12 @@ module.exports = {
     const compare = await bcrypt.compare(data.passwordOne, oneUser.passwordOne);
     if (compare) {
       req.session.user = oneUser;
+      const notSeenNotifications = await userNotificationModel.find({
+        user: oneUser._id,
+        seen: false,
+      });
       console.log(req.session.user);
-      res.send({ success: true, oneUser });
+      res.send({ success: true, oneUser, notSeenNotifications });
     } else {
       res.send({ success: false, message: 'bad creadentials' });
     }
@@ -41,7 +46,11 @@ module.exports = {
     const { user } = req.session;
     if (user) {
       const userInfo = await userModel.findOne({ email: user.email });
-      res.send({ success: true, userInfo });
+      const notSeenNotifications = await userNotificationModel.find({
+        user: user._id,
+        seen: false,
+      });
+      res.send({ success: true, userInfo, notSeenNotifications });
     } else {
       res.send({ success: false, message: 'you are not logged in' });
     }
@@ -52,15 +61,8 @@ module.exports = {
   },
   createTopic: async (req, res) => {
     const { user } = req.session;
-    const {
-      title,
-      shortDescription,
-      description,
-      commentsCount,
-      viewsCount,
-      createdAt,
-      currentUser,
-    } = req.body;
+    const { title, shortDescription, description, commentsCount, viewsCount, currentUser } =
+      req.body;
 
     if (user) {
       const topic = new topicModel();
@@ -84,19 +86,138 @@ module.exports = {
   },
   createComment: async (req, res) => {
     const { user } = req.session;
-    const { comment, createdAt, currentUser, currentTopic } = req.body;
+    const { comment, currentUser, currentTopic } = req.body;
 
     if (user) {
-      const commentNew = new topicModel();
+      const commentNew = new commentModel();
       commentNew.comment = comment;
       commentNew.createdAt = new Date();
       commentNew.user = currentUser;
       commentNew.topic = currentTopic;
 
       await commentNew.save();
+
+      const topic = await topicModel.findOne({ _id: currentTopic._id });
+      let newCommentsCount = Number(topic.commentsCount) + 1;
+      await topicModel.findOneAndUpdate(
+        { _id: currentTopic._id },
+        { $set: { commentsCount: newCommentsCount } },
+      );
+
       res.send({ success: true, message: 'Comment succesfull send', commentNew });
     } else {
       res.send({ success: false });
+    }
+  },
+  singleTopic: async (req, res) => {
+    const { topicID } = req.params;
+    const topic = await topicModel.findOne({ _id: topicID }).populate('user');
+    let newViewCount = Number(topic.viewsCount) + 1;
+    await topicModel.findOneAndUpdate({ _id: topicID }, { $set: { viewsCount: newViewCount } });
+    res.send({ success: true, topic });
+  },
+  userTopics: async (req, res) => {
+    const { user } = req.session;
+    if (user) {
+      let myTopic = await topicModel.find({ user: user._id }).populate('user');
+      res.send({ success: true, myTopic });
+    } else {
+      res.send({ success: false, message: 'No  tipic found' });
+    }
+  },
+  userComments: async (req, res) => {
+    let limit = 10;
+    let skipIndex = 0;
+    const { id, pageIndex } = req.params;
+    if (pageIndex > 1) {
+      skipIndex = (Number(pageIndex) - 1) * limit;
+    }
+
+    const { user } = req.session;
+    if (user) {
+      let myCommentsAll = await commentModel.count({ user: user._id });
+
+      let myComment = await commentModel
+        .find({ user: user._id })
+        .populate('user')
+        .skip(skipIndex)
+        .limit(limit);
+
+      res.send({ success: true, myComment, myCommentsAll });
+    } else {
+      res.send({ success: false, message: 'No  comment found' });
+    }
+  },
+  allTopicComments: async (req, res) => {
+    let limit = 10;
+    let skipIndex = 0;
+    const { id, pageIndex } = req.params;
+    if (pageIndex > 1) {
+      skipIndex = (Number(pageIndex) - 1) * limit;
+    }
+
+    let topicCommentsAll = await commentModel.count({ topic: id });
+
+    let lastPage = 1;
+
+    if (topicCommentsAll / limit > 1) {
+      if (topicCommentsAll % limit !== 0) {
+        let floor = Math.floor(topicCommentsAll / limit);
+        lastPage = floor + 1;
+      } else {
+        lastPage = topicCommentsAll / limit;
+      }
+    }
+
+    let topicComments = await commentModel
+      .find({ topic: id })
+      .populate('user')
+      .sort({ createdAt: 'asc' })
+      .skip(skipIndex)
+      .limit(limit);
+
+    res.send({ success: true, topicComments, totalCommentsCount: topicCommentsAll, lastPage });
+  },
+  createNotification: async (req, res) => {
+    const { user } = req.session;
+    const { content, destinationUrl, currentUser } = req.body;
+
+    if (user) {
+      const userNotification = new userNotificationModel();
+      userNotification.content = content;
+      userNotification.destinationUrl = destinationUrl;
+      userNotification.seen = false;
+      userNotification.createdAt = new Date();
+      userNotification.user = currentUser;
+
+      await userNotification.save();
+      res.send({ success: true, userNotification });
+    } else {
+      res.send({ success: false });
+    }
+  },
+  notificationIsSeen: async (req, res) => {
+    const { user } = req.session;
+    const { notificationID } = req.params;
+    if (user) {
+      await userNotificationModel.findOneAndUpdate(
+        { _id: notificationID },
+        { $set: { seen: true } },
+      );
+      const notSeenNotifications = await userNotificationModel.find({
+        user: user._id,
+        seen: false,
+      });
+      res.send({ success: true, notSeenNotifications });
+    }
+  },
+  changeUserPhoto: async (req, res) => {
+    const { user } = req.session;
+    const { imageUrl } = req.body;
+    if (user) {
+      await userModel.findOneAndUpdate({ _id: user._id }, { $set: { imageUrl } });
+      const userInfo = await userModel.findOne({ _id: user._id });
+      res.send({ success: true, userInfo });
     }
   },
 };
