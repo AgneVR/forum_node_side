@@ -36,7 +36,6 @@ module.exports = {
         user: oneUser._id,
         seen: false,
       });
-      console.log(req.session.user);
       res.send({ success: true, oneUser, notSeenNotifications });
     } else {
       res.send({ success: false, message: 'bad creadentials' });
@@ -88,9 +87,76 @@ module.exports = {
     const { user } = req.session;
     const { comment, currentUser, currentTopic } = req.body;
 
+    let newComment = comment;
+
     if (user) {
+      let rexpImage = /(https?:\/\/\S+(\.png|\.jpg|\.gif|\.webp))/g;
+      let rexpVideo =
+        /(\b(https?|ftp):\/\/(www.)?youtu(be|.be).*[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])/gim;
+      let videoIdRegex =
+        /(?:youtube(?:-nocookie)?\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+
+      let urlsToReplace = [];
+      let imagesToReplace = [];
+      let textSplited = newComment.split(' ');
+
+      textSplited.forEach((word) => {
+        if (word.match(rexpVideo)) {
+          let vidCode = word.match(videoIdRegex)[1];
+          let newURL = `https://www.youtube.com/embed/${vidCode}`;
+          urlsToReplace.push({ oldURL: word, newURL: newURL });
+        } else if (word.match(rexpImage)) {
+          imagesToReplace.push({ imageURL: word });
+        }
+      });
+
+      if (imagesToReplace.length > 0) {
+        imagesToReplace.forEach((imageItem) => {
+          let newLineSplit = imageItem.imageURL.split(/\r\n|\r|\n/g);
+          if (newLineSplit.length > 0) {
+            newLineSplit.forEach((newLine) => {
+              if (newLine.match(rexpImage)) {
+                newComment = newComment.replace(
+                  newLine,
+                  `<div class='comment-img'><img src='${newLine}' /></div>`,
+                );
+              }
+            });
+          } else {
+            newComment = newComment.replace(
+              imageItem.imageURL,
+              `<div class='comment-img'><img src='${imageItem.imageURL}' /></div>`,
+            );
+          }
+        });
+      }
+
+      if (urlsToReplace.length > 0) {
+        urlsToReplace.forEach((url) => {
+          let newLineSplit = url.oldURL.split(/\r\n|\r|\n/g);
+
+          if (newLineSplit.length > 0) {
+            newLineSplit.forEach((newLine) => {
+              if (newLine.match(rexpVideo)) {
+                newComment = newComment.replace(
+                  newLine,
+                  `<iframe width='560' height='315' src='${url.newURL}' title='YouTube video player' frameborder='0' allow='accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture' allowfullscreen></iframe>`,
+                );
+              }
+            });
+          } else {
+            newComment = newComment.replace(
+              url.oldURL,
+              `<iframe width='560' height='315' src='${url.newURL}' title='YouTube video player' frameborder='0' allow='accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture' allowfullscreen></iframe>`,
+            );
+          }
+        });
+      }
+
       const commentNew = new commentModel();
-      commentNew.comment = comment;
+
+      commentNew.comment = newComment;
+
       commentNew.createdAt = new Date();
       commentNew.user = currentUser;
       commentNew.topic = currentTopic;
@@ -219,5 +285,11 @@ module.exports = {
       const userInfo = await userModel.findOne({ _id: user._id });
       res.send({ success: true, userInfo });
     }
+  },
+  topicsStatistics: async (req, res) => {
+    let resecentTopics = await topicModel.find({}).sort({ createdAt: 'desc' }).limit(3);
+    let mostPopularTopics = await topicModel.find({}).sort({ commentsCount: 'desc' }).limit(3);
+    let mostReadableTopics = await topicModel.find({}).sort({ viewsCount: 'desc' }).limit(3);
+    res.send({ success: true, resecentTopics, mostPopularTopics, mostReadableTopics });
   },
 };
