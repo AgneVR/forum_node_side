@@ -224,6 +224,7 @@ module.exports = {
 
     let topicCommentsAll = await commentModel.count({ topic: id });
 
+    /////lat Page
     let lastPage = 1;
 
     if (topicCommentsAll / limit > 1) {
@@ -234,6 +235,7 @@ module.exports = {
         lastPage = topicCommentsAll / limit;
       }
     }
+    ////////
 
     let topicComments = await commentModel
       .find({ topic: id })

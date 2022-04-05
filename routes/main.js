@@ -4,6 +4,7 @@ const {
   validateRegistration,
   validateTopicCreation,
   validateCommentCreation,
+  validateUserImgUpload,
 } = require('../middleware/main');
 const {
   register,
@@ -37,6 +38,6 @@ router.get('/topics-statistics', topicsStatistics);
 router.post('/create-topic', validateTopicCreation, createTopic);
 router.post('/create-comment', validateCommentCreation, createComment);
 router.post('/create-notification', createNotification);
-router.post('/change-user-photo', changeUserPhoto);
+router.post('/change-user-photo', validateUserImgUpload, changeUserPhoto);
 
 module.exports = router;

@@ -59,6 +59,28 @@ module.exports = {
         success: false,
         message: `Comment shouldn 't be greater then 500 characters long`,
       });
+    } else if (userComment.comment.length === 0) {
+      res.send({
+        success: false,
+        message: `Comment is required`,
+      });
+    } else {
+      next();
+    }
+  },
+  validateUserImgUpload: (req, res, next) => {
+    const data = req.body;
+    let urlReg = /\b(http|https)/;
+
+    const userPhoto = {
+      imageUrl: data.imageUrl,
+    };
+
+    if (!urlReg.test(userPhoto.imageUrl)) {
+      res.send({
+        success: false,
+        message: `Wrong image url`,
+      });
     } else {
       next();
     }
